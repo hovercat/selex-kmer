@@ -62,7 +62,10 @@ def main():
         print(dict2.get(kmer, 0), end=";")
         print(fisher[1], end=";")
         print(fisher[0], end=";")
-        print(math.log2(fisher[0]), end=";")
+        if fisher[0] > 0:
+            print(math.log2(fisher[0]), end=";")
+        else:
+            print("-inf")
         print(z, end=";")
         print(z_opposite, end="\n")
 

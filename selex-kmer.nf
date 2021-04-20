@@ -81,9 +81,91 @@ fasta_files
 
 """
 ========================================================
+Removal of PCR Duplicates (Mutations, Indels)
+========================================================
+"""
+
+
+Channel.fromPath(params.derep_fasta)
+	.into { derep_fasta_blast_db; derep_fasta_blastn_query; derep_fasta_pcr_removal; derep_fasta_scoring }
+process pcr_dup_removal_blast_db {
+	conda 'bioconda::blast'
+
+    input:
+		file(derep_fasta) from derep_fasta_blast_db
+    output:
+        file("blast.db") into cleaned_derep_fasta
+    script:
+    """
+    	makeblastdb -in $derep_fasta -dbtype nucl -out blast.db/db
+    """
+}
+
+derep_fasta_blastn_query
+	.splitFasta(by: 1000, file:true)
+	.set { derep_1000 }
+
+process pcr_dup_removal_blastn {
+	conda 'bioconda::blast'
+	publishDir "${params.output_dir}/",
+	mode: "copy"
+
+    input:
+		file("blast.db") from cleaned_derep_fasta
+		each file(derep_fasta_1000) from derep_1000
+    output:
+        file("${derep_fasta_1000.baseName}.csv") into pcr_dup_removal_blastn_results
+    script:
+    """
+    	blastn -task blastn-short -query $derep_fasta_1000 -num_threads 1 -evalue 1  -strand plus -db blast.db/db -outfmt 6 > ${derep_fasta_1000.baseName}.csv 
+    	#-word_size 5 -gapopen 0 -gapextend 4 -penalty -3 -reward 2
+    """
+}
+
+process pcr_dup_removal_blastn_concat_results {
+	conda 'bioconda::blast'
+	publishDir "${params.output_dir}/",
+	mode: "copy"
+
+    input:
+		file(blast_csv) from pcr_dup_removal_blastn_results.collect()
+    output:
+        file("blastn_results.csv") into pcr_dup_removal_blastn_results_concat
+    script:
+    """
+		find -L . -wholename './aptamers.*.csv' | sort | xargs cat > blastn_results.csv
+    """
+}
+
+
+
+
+process pcr_dup_removal_all {
+	conda 'pandas'
+	publishDir "${params.output_dir}/",
+	mode: "copy"
+
+    //echo true
+    input:
+    	file(derep) from derep_fasta_pcr_removal
+		file(blastn_csv) from pcr_dup_removal_blastn_results_concat
+    output:
+         file("aptamers.clean.fasta") into derep_pcr_removed
+    script:
+    """
+		remove_pcr_duplicates.py -f $derep -b $blastn_csv > aptamers.clean.fasta
+    """
+}
+
+"""
+========================================================
 Analysing SELEX Enrichment
 ========================================================
 """
+
+fasta_files_filtered
+	.combine(derep_pcr_removed)
+	.into { fasta_files_pcr_removed }
 
 process count_kmers {
     publishDir "${params.output_dir}/",
@@ -91,12 +173,12 @@ process count_kmers {
         mode: "copy"
                 
     input:
-        tuple val(round_id), val(round_name), file(fasta) from fasta_files_filtered
+        tuple val(round_id), val(round_name), file(fasta), file(cleaned_derep) from fasta_files_pcr_removed
     output:
         tuple val(round_id), val(round_name), file(fasta), file("kmers_${round_name}.csv") into kmer_counts
         
     """
-        kmer_count.py -i $fasta -k ${params.k} -u > kmers_${round_name}.csv
+        kmer_count.py -i $fasta --cleaned $cleaned_derep -k ${params.k}  > kmers_${round_name}.csv
     """
 }
 
@@ -105,30 +187,47 @@ kmer_counts
 
 kmer_counts1
     .combine(kmer_counts2)
-//    .map { it -> [it[0][0], it[0][1], it[0][2], it[0][3],
-//		  it[1][0], it[1][1], it[1][2], it[1][3]] } 
-//    .flatten()
     .filter { (it[0] < it[4]) }
-    .view()
     .set{ fisher_kmer_combinations }
 
-derep_fasta = Channel.fromPath(params.derep_fasta)
-fisher_kmer_combinations_derep = fisher_kmer_combinations
-	.combine(derep_fasta)
+
 
 process kmer_fisher_test {
     publishDir "${params.output_dir}/",
 	mode: "copy"
 
-    echo true
+    //echo true
     input:
-	tuple val(id1), val(name1), file(fasta1), file(kmers1), val(id2), val(name2), file(fasta2), file(kmers2), file(derep) from fisher_kmer_combinations_derep
+		tuple val(id1), val(name1), file(fasta1), file(kmers1), val(id2), val(name2), file(fasta2), file(kmers2) from fisher_kmer_combinations
     output:
-	tuple val(name1), val(name2), file("fisher_${name1}_${name2}.csv"), file("scores_${name1}_${name2}.csv") into fisher_channel
+		tuple val(name1), val(name2), file("fisher_kmer_${name1}_${name2}.csv") into fisher_kmer_channel
     script:
     """
-	fisher_testing.py -i1 $kmers1 -i2 $kmers2 -k ${params.k} > fisher_${name1}_${name2}.csv
-	score_aptamers.py -i fisher_${name1}_${name2}.csv -k ${params.k} -f $derep > scores_${name1}_${name2}.csv
+		fisher_testing.py -i1 $kmers1 -i2 $kmers2 -k ${params.k} > fisher_kmer_${name1}_${name2}.csv
+    """
+}
+
+
+derep_csv = Channel.fromPath(params.derep_csv)
+fisher_kmer_channel
+	.combine(derep_fasta_scoring)
+	.set { fisher_aptamer_channel }
+
+
+
+
+process aptamer_scoring {
+    publishDir "${params.output_dir}/",
+	mode: "copy"
+
+    //echo true
+    input:
+		tuple val(name1), val(name2), file(fisher_kmers), file(derep_fasta) from fisher_aptamer_channel
+    output:
+		tuple val(name1), val(name2), file("scores_${name1}_${name2}.csv") into scoring_channel
+    script:
+    """
+		score_aptamers.py -i $fisher_kmers -k ${params.k} -f $derep_fasta -n1 ${name1} -n2 ${name2} > scores_${name1}_${name2}.csv
     """
 }
 
