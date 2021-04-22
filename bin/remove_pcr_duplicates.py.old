@@ -44,42 +44,29 @@ def main():
             id = id.rstrip()
             seq = fasta_file.readline().rstrip()
             total_counts = np.sum(np.array(id.rstrip().split(' ')[1].split('-'), dtype=int))
-            sequence_nodes[seq] = { Sequence_Node(seq, id, total_counts) }
+            sequence_nodes[seq] = Sequence_Node(seq, id, total_counts)
 
-    seq_x = filtered_results['seq_x'].to_list()
-    seq_y = filtered_results['seq_y'].to_list()
-    for i in range(len(seq_x)):
-        seq_x_i = seq_x[i]
-        seq_y_i = seq_y[i]
+    for index, row in filtered_results.iterrows():
+        sequence_nodes[row.seq_x].add_friend(sequence_nodes[row.seq_y])
+        sequence_nodes[row.seq_y].add_friend(sequence_nodes[row.seq_x])
 
-        sequence_nodes[seq_x_i].update(sequence_nodes[seq_y_i])
-        sequence_nodes[seq_y_i] = sequence_nodes[seq_x_i]
-        #sequence_nodes[row.seq_x].add_friend(sequence_nodes[row.seq_y])
-        #sequence_nodes[row.seq_y].add_friend(sequence_nodes[row.seq_x])
-
-    friends_sets = list()
-    for friends_set in sequence_nodes.values():
-        friends_sets.append(frozenset(friends_set))
-    friends_sets = set(friends_sets)
-
-
-   # seqs_to_remove = set()
+    seqs_to_remove = set()
     best_friends = dict()
-    for friends_set in friends_sets:
-        best_friend = None
-        max_count = 0
 
-        for friend in friends_set:
-            if friend.count > max_count:
-                best_friend = friend
-                max_count = friend.count
+    for seq, seq_node in sequence_nodes.items():
+        if seq_node in seqs_to_remove or seq_node in best_friends:
+            continue
 
+        best_friend = seq_node.find_best_friend()
         best_friends[best_friend.seq] = best_friend
-       # seqs_to_remove.update(friends_set)
+        removal_seqs = list(seq_node.friends)
+        removal_seqs.remove(best_friend)
+        seqs_to_remove.update(removal_seqs)
 
-    for seq, seq_node in best_friends.items():
-        print(seq_node.id)
-        print(seq_node.seq)
+    for seq, seq_node in sequence_nodes.items():
+        if seq in best_friends:
+            print(seq_node.id)
+            print(seq_node.seq)
 
 
 main()
