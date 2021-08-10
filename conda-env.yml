@@ -4,6 +4,7 @@ channels:
   - bioconda
   - defaults
 dependencies:
+  - blast
   - scipy
   - pandas
   - r-base=4.0.3
@@ -17,3 +18,5 @@ dependencies:
   - r-ggplot2
   - r-viridis
   - r-latex2exp
+  - networkx
+  - numpy

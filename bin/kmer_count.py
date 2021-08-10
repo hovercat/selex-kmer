@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import numpy as np
 
 args_parser = argparse.ArgumentParser()
 args_parser.add_argument("-i", type=str, required=True)
@@ -43,41 +44,44 @@ def int_to_seq(seq_hash, k):
     return ''.join(reversed(seq))
 
 
-def count_kmers(fasta_file_name, k, cleaned_derep=None, uniques=False):
-    # init dict
+def count_kmers(fasta_file_name, k, asv_fasta, uniques=False):
+    # init kmer counter dict with 0 to 4 to pow k
     kmer_map = dict()
     for i in range(0, pow(4, k)):
         kmer_map[i] = 0
 
-    derep_dict = dict()
-    if cleaned_derep is not None:
-        with open(cleaned_derep, 'r') as fasta_derep:
-            for id in fasta_derep:
-                seq = fasta_derep.readline().rstrip('\n')
-                derep_dict[seq] = True  # hahahaha
+    # put ASVs into asv_list
+    asv_list = list()
+    with open(asv_fasta, 'r') as asv_fasta_file:
+        for id in asv_fasta_file:
+            seq = asv_fasta_file.readline().rstrip('\n')
+            #counts = np.array(id.rstrip().split(' ')[1].split('-'), dtype=int)
+            #total_count = np.sum(counts)
+            #asv_list[seq] = counts[-1]  # hahahaha
+            asv_list.append(seq)
 
-    seq_dict = dict()
+    seq_list = list()
     with open(fasta_file_name, 'r') as fasta_file:
         for seq_id in fasta_file:
             seq = fasta_file.readline().rstrip('\n')
 
-            if seq_dict.get(seq) is not None:
-                continue
-            else:
-                seq_dict[seq] = True  # kinda bad, but ok?
-
-            if seq not in derep_dict and len(derep_dict) > 0:  # continue if there is a better relative seq
+            # count kmers only if seq is not yet seen
+            # only count kmers if seq in ASVs
+            if seq in seq_list or seq not in asv_list:
                 continue
 
-            kmer_list = list()
-            for i in range(0, len(seq) - k):
-                kmer_list.append(sequence_to_int(seq[i:i + k]))
+            # ASV added to seq_dict
+            seq_list.append(seq)
 
+            kmer_list = [sequence_to_int(seq[i:i+k]) for i in range(0, len(seq) - k)]
+
+            # if uniques is set, we do not count duplicate kmers in an aptamer e.g. kmer AAA in AAAA would appear two times.
             if uniques:
                 kmer_list = list(set(kmer_list))  # removes duplicates
 
+
             for kmer_id in kmer_list:
-                kmer_map[kmer_id] = kmer_map[kmer_id] + 1
+                kmer_map[kmer_id] += 1
 
     return kmer_map
 

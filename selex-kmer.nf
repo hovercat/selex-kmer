@@ -4,41 +4,6 @@
 Groovy Helper Functions
 ========================================================    
 """
-def reverse_complement(String s) {
-    complement(s.reverse());
-}
-
-def complement(String s) {
-    def acgt_map = [
-        "A": "T",
-        "C": "G",
-        "G": "C",
-        "T": "A",
-        "a": "t",
-        "c": "g",
-        "g": "c",
-        "t": "a"
-    ];
-
-    char[] sc = new char[s.length()];
-    for (int i = 0; i < s.length(); i++) {
-        sc[i] = acgt_map[s[i]];
-    }
-    new String(sc);
-}
-
-def remove_all_extensions(String s) {
-    s.substring(0, s.indexOf("."));
-}
-
-def trim_fn(String s) {    
-    if (params.trim_filenames) {
-        return s.substring(0, s.indexOf(params.trim_delimiter));
-    } else {
-        return s;
-    }
-}
-
 def filter_selex_rounds(String round_name) {
     if (params.round_order == null || params.round_order == "" || params.round_order.size() == 0) return true;
     // // building regex to check files if they match the rounds specified in YOUR_SELEX
@@ -77,6 +42,9 @@ fasta_files
     .view()
     .filter { filter_selex_rounds(it[1]) }
     .set{ fasta_files_filtered }
+    
+Channel.fromPath(params.derep_fasta)
+	.into { derep_fasta_blast_db; derep_fasta_blastn_query; derep_fasta_pcr_removal; derep_fasta_scoring }
    
 
 """
@@ -86,10 +54,8 @@ Removal of PCR Duplicates (Mutations, Indels)
 """
 
 
-Channel.fromPath(params.derep_fasta)
-	.into { derep_fasta_blast_db; derep_fasta_blastn_query; derep_fasta_pcr_removal; derep_fasta_scoring }
 process pcr_dup_removal_blast_db {
-	conda 'bioconda::blast'
+//	conda 'bioconda::blast'
 
     input:
 		file(derep_fasta) from derep_fasta_blast_db
@@ -106,7 +72,7 @@ derep_fasta_blastn_query
 	.set { derep_1000 }
 
 process pcr_dup_removal_blastn {
-	conda 'bioconda::blast'
+//	conda 'bioconda::blast'
 	publishDir "${params.output_dir}/",
 	mode: "copy"
 
@@ -114,16 +80,16 @@ process pcr_dup_removal_blastn {
 		file("blast.db") from cleaned_derep_fasta
 		each file(derep_fasta_1000) from derep_1000
     output:
-        file("${derep_fasta_1000.baseName}.csv") into pcr_dup_removal_blastn_results
+        file("blast.${derep_fasta_1000.baseName}.csv") into pcr_dup_removal_blastn_results
     script:
     """
-    	blastn -task blastn-short -query $derep_fasta_1000 -num_threads 1 -evalue 1  -strand plus -db blast.db/db -outfmt 6 > ${derep_fasta_1000.baseName}.csv 
+    	blastn -task blastn-short -query $derep_fasta_1000 -num_threads 1 -evalue 0.05  -strand plus -db blast.db/db -outfmt 6 -gapopen 0 -gapextend 4 -penalty -3 -reward 2 > blast.${derep_fasta_1000.baseName}.csv 
     	#-word_size 5 -gapopen 0 -gapextend 4 -penalty -3 -reward 2
     """
 }
 
 process pcr_dup_removal_blastn_concat_results {
-	conda 'bioconda::blast'
+//	conda 'bioconda::blast'
 	publishDir "${params.output_dir}/",
 	mode: "copy"
 
@@ -133,7 +99,7 @@ process pcr_dup_removal_blastn_concat_results {
         file("blastn_results.csv") into pcr_dup_removal_blastn_results_concat
     script:
     """
-		find -L . -wholename './aptamers.*.csv' | sort | xargs cat > blastn_results.csv
+		find -L . -wholename './blast.*.csv' | sort | xargs cat > blastn_results.csv
     """
 }
 
@@ -141,11 +107,11 @@ process pcr_dup_removal_blastn_concat_results {
 
 
 process pcr_dup_removal_all {
-	conda 'pandas'
+//	conda 'pandas networkx'
 	publishDir "${params.output_dir}/",
 	mode: "copy"
 
-    //echo true
+    echo true
     input:
     	file(derep) from derep_fasta_pcr_removal
 		file(blastn_csv) from pcr_dup_removal_blastn_results_concat
@@ -153,7 +119,7 @@ process pcr_dup_removal_all {
          file("aptamers.clean.fasta") into derep_pcr_removed
     script:
     """
-		remove_pcr_duplicates.py -f $derep -b $blastn_csv > aptamers.clean.fasta
+		remove_pcr_duplicates.py -f $derep -b $blastn_csv -o aptamers.clean.fasta
     """
 }
 
@@ -163,11 +129,14 @@ Analysing SELEX Enrichment
 ========================================================
 """
 
+
 fasta_files_filtered
 	.combine(derep_pcr_removed)
-	.into { fasta_files_pcr_removed }
+	.set { fasta_files_pcr_removed }
+
 
 process count_kmers {
+//    conda 'numpy'
     publishDir "${params.output_dir}/",
         pattern: '*{csv}',
         mode: "copy"
@@ -178,7 +147,7 @@ process count_kmers {
         tuple val(round_id), val(round_name), file(fasta), file("kmers_${round_name}.csv") into kmer_counts
         
     """
-        kmer_count.py -i $fasta --cleaned $cleaned_derep -k ${params.k}  > kmers_${round_name}.csv
+        kmer_count.py -i $fasta --cleaned $cleaned_derep -k ${params.k} -u > kmers_${round_name}.csv
     """
 }
 
@@ -193,6 +162,7 @@ kmer_counts1
 
 
 process kmer_fisher_test {
+//	conda 'scipy'
     publishDir "${params.output_dir}/",
 	mode: "copy"
 
@@ -211,18 +181,20 @@ process kmer_fisher_test {
 derep_csv = Channel.fromPath(params.derep_csv)
 fisher_kmer_channel
 	.combine(derep_fasta_scoring)
-	.set { fisher_aptamer_channel }
+	.combine(derep_csv)
+	.into { fisher_aptamer_channel; fisher_aptamer_channel2 }
 
 
 
 
 process aptamer_scoring {
+//	conda 'anaconda::scipy pandas'
     publishDir "${params.output_dir}/",
 	mode: "copy"
 
     //echo true
     input:
-		tuple val(name1), val(name2), file(fisher_kmers), file(derep_fasta) from fisher_aptamer_channel
+		tuple val(name1), val(name2), file(fisher_kmers), file(derep_fasta), file(derep_csv) from fisher_aptamer_channel
     output:
 		tuple val(name1), val(name2), file("scores_${name1}_${name2}.csv") into scoring_channel
     script:
@@ -230,5 +202,22 @@ process aptamer_scoring {
 		score_aptamers.py -i $fisher_kmers -k ${params.k} -f $derep_fasta -n1 ${name1} -n2 ${name2} > scores_${name1}_${name2}.csv
     """
 }
+
+/*
+process aptamer_scoring_2 {
+conda 'scipy pandas'
+    publishDir "${params.output_dir}/",
+	mode: "copy"
+
+    //echo true
+    input:
+		tuple val(name1), val(name2), file(fisher_kmers), file(derep_fasta), file(derep_csv) from fisher_aptamer_channel2
+    output:
+		tuple val(name1), val(name2), file("aptamer_fisher_${name1}_${name2}.csv") into scoring_channel2
+    script:
+    """
+		fisher_aptamer_testing.py -i $derep_csv -r1 $name1 -r2 $name2 > aptamer_fisher_${name1}_${name2}.csv
+    """
+}*/
 
 

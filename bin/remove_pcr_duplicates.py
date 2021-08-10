@@ -7,15 +7,17 @@ from Sequence_Node import Sequence_Node
 args_parser = argparse.ArgumentParser()
 args_parser.add_argument("-f", type=str, required=True)
 args_parser.add_argument("-b", type=str, required=True)
-args_parser.add_argument("--dereplicate", action="store_true", default=False)
+args_parser.add_argument("-o", type=str, required=True)
 
 import pandas as pd
 import numpy as np
+import networkx as nx
 
 
 def main():
     args = args_parser.parse_args()
 
+    print("Reading Blast file")
     blast = pd.read_csv(args.b,
                         delimiter="\t",
                         header=0,
@@ -34,52 +36,57 @@ def main():
                             "bitscore"
                         ])
 
-    blast_filter = (blast.seq_x != blast.seq_y)
-    filtered_results = blast[blast_filter]
 
     # read_sequence_file
+    print("Reading FASTA file")
+    g = nx.Graph()
     sequence_nodes = dict()
+    friends_list = list()
+    remove_nodes = list()
     with open(args.f, "r") as fasta_file:
         for id in fasta_file:
             id = id.rstrip()
             seq = fasta_file.readline().rstrip()
-            total_counts = np.sum(np.array(id.rstrip().split(' ')[1].split('-'), dtype=int))
-            sequence_nodes[seq] = { Sequence_Node(seq, id, total_counts) }
+            seq_node = Sequence_Node(seq, id)
 
+            #if seq_node.total_count >= 2:
+            #    sequence_nodes[seq] = seq_node
+            #else:
+            #    remove_nodes.append(seq_node)
+            sequence_nodes[seq] = seq_node
+
+    #filtered_results = blast[blast.e_val <= 0.05]
+    filtered_results = blast
+    filtered_results = filtered_results[filtered_results.seq_x.isin(sequence_nodes.keys()) & filtered_results.seq_y.isin(sequence_nodes.keys())]
     seq_x = filtered_results['seq_x'].to_list()
     seq_y = filtered_results['seq_y'].to_list()
-    for i in range(len(seq_x)):
-        seq_x_i = seq_x[i]
-        seq_y_i = seq_y[i]
+    del filtered_results
+    del blast
 
-        sequence_nodes[seq_x_i].update(sequence_nodes[seq_y_i])
-        sequence_nodes[seq_y_i] = sequence_nodes[seq_x_i]
-        #sequence_nodes[row.seq_x].add_friend(sequence_nodes[row.seq_y])
-        #sequence_nodes[row.seq_y].add_friend(sequence_nodes[row.seq_x])
+    g.add_edges_from(zip(seq_x, seq_y))
 
-    friends_sets = list()
-    for friends_set in sequence_nodes.values():
-        friends_sets.append(frozenset(friends_set))
-    friends_sets = set(friends_sets)
+    print("Finding best friends and print to fasta")
+    representative_sequences = []
+    with open(args.o, 'w') as out:
+        for component in nx.connected_components(g):
+            if len(component) == 1:
+                seq = component.pop()
+                seq_node = sequence_nodes[seq]
 
+                out.write('>{} {}\n'.format(seq_node.seq, '-'.join([str(x) for x in seq_node.count])))
+                out.write('{}\n'.format(seq_node.seq))
+                out.flush()
+            else:
+                seq_nodes = [sequence_nodes[x] for x in component]
+                max_count = max(seq_node.total_count for seq_node in seq_nodes)
+                indices = [i for i, x in enumerate(seq_nodes) if x.total_count == max_count]
+                counts = np.sum([sequence_nodes[x].count for x in component], axis=0)
 
-   # seqs_to_remove = set()
-    best_friends = dict()
-    for friends_set in friends_sets:
-        best_friend = None
-        max_count = 0
+                best_node = seq_nodes[indices[0]]
+                out.write('>{} {}\n'.format(best_node.seq, '-'.join([str(x) for x in counts])))
+                out.write('{}\n'.format(best_node.seq))
+                out.flush()
 
-        for friend in friends_set:
-            if friend.count > max_count:
-                best_friend = friend
-                max_count = friend.count
-
-        best_friends[best_friend.seq] = best_friend
-       # seqs_to_remove.update(friends_set)
-
-    for seq, seq_node in best_friends.items():
-        print(seq_node.id)
-        print(seq_node.seq)
 
 
 main()
