@@ -55,7 +55,7 @@ def main():
         max_shifting = 0
         min_shifting = 0
         shifting_frame = 5
-        for i in range(0, kmers-10):
+        for i in range(0, kmers-shifting_frame):
             shifting_score = np.mean(scores[i:i+shifting_frame])
             if shifting_score > max_shifting:
                 max_shifting = shifting_score

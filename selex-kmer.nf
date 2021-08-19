@@ -73,6 +73,8 @@ derep_fasta_blastn_query
 
 process pcr_dup_removal_blastn {
 //	conda 'bioconda::blast'
+    maxForks params.cpus
+    cpus 1
 	publishDir "${params.output_dir}/",
 	mode: "copy"
 
@@ -163,6 +165,7 @@ kmer_counts1
 
 process kmer_fisher_test {
 //	conda 'scipy'
+    maxForks params.cpus
     publishDir "${params.output_dir}/",
 	mode: "copy"
 
@@ -189,6 +192,7 @@ fisher_kmer_channel
 
 process aptamer_scoring {
 //	conda 'anaconda::scipy pandas'
+    maxForks params.cpus
     publishDir "${params.output_dir}/",
 	mode: "copy"
 

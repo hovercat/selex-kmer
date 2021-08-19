@@ -51,9 +51,9 @@ def make_sane_string(s):
 ######################################################
 arguments = dict()
 
-print("Creating a config file for selex-assess workflow.")
+print("Creating a config file for selex-kmer workflow.")
 print(
-    "Please answer the following questions. If you don't know an answer, you can press enter without an answer to opt for the default value.")
+    "Please answer the following questions. If you don't know an answer, in some cases you can press enter without an answer to opt for the default value.")
 
 # Experiment Name
 while not arguments.get("experiment"):
@@ -70,6 +70,11 @@ arguments["output_dir"] = parse_string(
     input("In which directory to write output files to? (default: './output_{}/)\n".format(make_sane_string(arguments["experiment"]))),
     './output_{}'.format(make_sane_string(arguments["experiment"]))
 )
+
+while not arguments.get("derep_csv"):
+    arguments["derep_csv"] = parse_string(input("In which directory is the dereplicated csv file stored as provided by selex-assess?\n"))
+while not arguments.get("derep_fasta"):
+    arguments["derep_fasta"] = parse_string(input("In which directory is the dereplicated fasta file stored as provided by selex-assess?\n"))
 
 # Check input directory for FASTA-Files
 if os.path.exists(arguments["input_dir"]):
@@ -92,17 +97,17 @@ while not arguments.get("round_order"):
     if not arguments.get("round_order"):
         print("Please specify the round order of your FASTA-files!")
 
-while not arguments.get("random_region"):
-    arguments["random_region"] = parse_int(input("How long is the random region of your aptamers?"))
-
 # Ask for FASTA-Pattern
 while not arguments.get("fasta_pattern"):
-    arguments["fasta_pattern"] = parse_string(input("Please provide a FASTA-search pattern, including a wild-card. For example: \nIf you had R0_S1_100.fasta, your search pattern should look like this: \'*.fasta\'\n"))
+    arguments["fasta_pattern"] = parse_string(input(
+        "Please provide a FASTA-search pattern, including a wild-card. For example: \nIf you had R0.fasta your search pattern would be: \'*1.fasta\'\n"))
     if not arguments["fasta_pattern"]:
         print("Please specify a FASTA-search pattern!")
-        
-while not arguments.get("top_n"):
-    arguments["top_n"] = parse_int(input("How many top aptamers should be printed to the xlsx-file?"))
+
+while not arguments.get("k"):
+    arguments["k"] = parse_int(input("What's your kmer size? default: k=6.\n"), 6)
+while not arguments.get("cpus"):
+    arguments["cpus"] = parse_int(input("What's your max number of available CPUs?\n"))
 
 # Finished reading config parameters.
 print("")
@@ -125,7 +130,6 @@ with open(config_file_name, "w") as config_file:
             else:
                 config_file.write('{key} = false\n')
     config_file.write("}\n")
-
 
 print("Done.")
 print("Your config file was saved to '{}'.".format(config_file_name))
