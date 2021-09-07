@@ -92,8 +92,8 @@ process pcr_dup_removal_blastn {
 
 process pcr_dup_removal_blastn_concat_results {
 //	conda 'bioconda::blast'
-	publishDir "${params.output_dir}/",
-	mode: "copy"
+//	publishDir "${params.output_dir}/",
+//	mode: "copy"
 
     input:
 		file(blast_csv) from pcr_dup_removal_blastn_results.collect()

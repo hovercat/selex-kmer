@@ -30,10 +30,6 @@ def main():
         for id in aptamers_fasta:
             total_count = np.sum(np.array(id.rstrip().split(' ')[1].split('-'), dtype=int))
             seq = aptamers_fasta.readline().rstrip()
-
-            #            if total_count < 100:
-            #                continue
-
             aptamers.append(seq)
 
     for seq in aptamers:
@@ -68,7 +64,6 @@ def main():
         print(score, end=";")
         print(max_shifting, end=";")
         print(min_shifting, end="\n")
-    # print_csv(dict1, dict2, fisher_dict, z_dict, args.k)
 
 
 main()
